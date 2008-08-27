@@ -40,7 +40,9 @@
  * from raster-comparison-20070813.tar.bz2
  */
 
-#define I /*static*/
+#ifndef I
+#  define I /*static*/
+#endif
 
 #include "glitter-paths.h"
 
@@ -480,7 +482,7 @@ cell_list_fini(struct cell_list *cells)
 }
 
 /* Relinquish all pointers to cells and make the cell list empty. */
-static void
+inline static void
 cell_list_reset(struct cell_list *cells)
 {
     cell_list_rewind(cells);
@@ -634,7 +636,7 @@ cell_list_find2(struct cell_list *cells, int x1, int x2)
 /* Incorporate the contribution of a downwards edge sampled at x on
  * the current subrow to the cell list.  This effectively renders a
  * half-open span starting at x at the subrow. */
-inline static glitter_status_t
+static glitter_status_t
 cell_list_render_subspan_start_to_cell(
     struct cell_list *cells,
     grid_scaled_x_t x)
@@ -877,7 +879,7 @@ polygon_reset(
     return GLITTER_STATUS_NO_MEMORY;
 }
 
-inline static void
+static void
 _polygon_insert_edge_into_its_y_bucket(
     struct polygon *polygon,
     struct edge *e)
@@ -907,7 +909,7 @@ _polygon_insert_edge_into_its_y_bucket(
 
 /* Add a new oriented edge to the polygon.  The direction must be +1
  * or -1. */
-static glitter_status_t
+inline static glitter_status_t
 polygon_add_edge(
     struct polygon *polygon,
     int x0, int y0,
@@ -1026,30 +1028,25 @@ active_list_sort(struct active_list *active)
     active->min_h = min_h;
 }
 
-/* Recomputes the minimum height of all edges on the active list. */
-static void
-active_list_recompute_min_h(
-    struct active_list *active)
-{
-    struct edge *e = active->head;
-    int min_h = INT_MAX;
-
-    while (NULL != e) {
-	if (e->h < min_h)
-	    min_h = e->h;
-	e = e->next;
-    }
-    active->min_h = min_h;
-}
-
 /* Test if the edges on the active list can be safely advanced by a
  * full row without intersections. */
-static int
+inline static int
 active_list_can_step_row(
     struct active_list *active)
 {
+    /* Recomputes the minimum height of all edges on the active
+     * list if we don't know the min height well. */
     if (active->min_h <= -GRID_Y) {
-	active_list_recompute_min_h(active);
+	struct edge *e = active->head;
+	int min_h = INT_MAX;
+
+	while (NULL != e) {
+	    if (e->h < min_h)
+		min_h = e->h;
+	    e = e->next;
+	}
+
+	active->min_h = min_h;
     }
 
     /* Don't bother if an edge is going likely to end soon. */
@@ -1059,10 +1056,12 @@ active_list_can_step_row(
 	struct edge *e = active->head;
 	while (NULL != e) {
 	    struct quorem x = e->x;
+
 	    x.quo += e->dxdy_full.quo;
 	    x.rem += e->dxdy_full.rem;
 	    if (x.rem >= e->dy)
 		++x.quo;
+
 	    if (x.quo <= prev_x)
 		return 0;
 	    prev_x = x.quo;
@@ -1151,7 +1150,7 @@ active_list_substep_edges(
 /* Render spans to the cell list corresponding to parts of the polygon
  * that intersect the current subsample row.  Non-zero winding number
  * fill rule. */
-static glitter_status_t
+inline static glitter_status_t
 apply_nonzero_fill_rule_for_subrow(
     struct active_list *active,
     struct cell_list *coverages)
