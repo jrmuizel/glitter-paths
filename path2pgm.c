@@ -1,5 +1,5 @@
 #define BIN_SH /*
-gcc -O0 -g -Wall -W -o `basename $0 .c` $0
+gcc -O3 -funroll-all-loops -g -Wall -W -o `basename $0 .c` $0
 exit $?
 */
 #include <assert.h>
@@ -273,6 +273,16 @@ cx_interpret_stream(struct context *cx, FILE *fp)
 #undef get_double_arg
 }
 
+static char *
+prefix(char *s, char const *pref)
+{
+        size_t len = strlen(pref);
+        if (0 == strncmp(s, pref, len)) {
+                return s + len;
+        }
+        return NULL;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -281,12 +291,14 @@ main(int argc, char **argv)
         int width = 512, have_width = 0;
         int height = 512, have_height = 0;
         FILE *fp;
-        int err;
+        int err=0;
         int i;
+        int niter = 1;
         int nonzero_fill = 1;
 
         for (i=1; i<argc; i++) {
                 int usage = 0;
+                char *arg;
                 if (0==strcmp("--fill-rule=even-odd", argv[i])) {
                         nonzero_fill = 0;
                 }
@@ -295,6 +307,9 @@ main(int argc, char **argv)
                 }
                 else if (0==strcmp("--help", argv[i])) {
                         usage = 1;
+                }
+                else if ((arg = prefix(argv[i], "--niter="))) {
+                        niter = atoi(arg);
                 }
                 else if (!filename) {
                         filename = argv[i];
@@ -330,10 +345,18 @@ main(int argc, char **argv)
                 exit(1);
         }
 
-        cx_init(cx, width, height, nonzero_fill);
-        cx_reset_clip(cx, 0, 0, width, height);
 
-        err = cx_interpret_stream(cx, fp);
+        cx_init(cx, width, height, nonzero_fill);
+        for (i=1; !err && i<=niter; i++) {
+                cx_reset_clip(cx, 0, 0, width, height);
+
+                err = cx_interpret_stream(cx, fp);
+                if (err) break;
+
+                if (niter > 1) {
+                        rewind(fp);
+                }
+        }
 
         if (!err) {
                 image_save_as_pgm_to_stream(cx->image, stdout);
