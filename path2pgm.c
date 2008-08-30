@@ -122,7 +122,8 @@ struct context {
 };
 
 static void
-cx_resize(struct context *cx, unsigned width, unsigned height)
+cx_resize(struct context *cx,
+          unsigned width, unsigned height)
 {
         image_fini(cx->image);
         image_init(cx->image, width, height);
@@ -136,7 +137,6 @@ cx_init(struct context *cx,
         memset(cx, 0, sizeof(struct context));
 
         image_init(cx->image, 0, 0);
-
         cx->backend = backend;
         backend->init(cx);
 }
@@ -486,6 +486,103 @@ program_parse_stream(struct program *pgm, FILE *fp)
 #undef get_double_arg
 }
 
+struct extents {
+        double xmin, ymin, xmax, ymax;
+};
+
+static void
+extents_init_empty(struct extents *e)
+{
+        e->xmin = 1e300;
+        e->ymin = 1e300;
+        e->xmax = -1e300;
+        e->ymax = -1e300;
+}
+
+static void
+extents_init_full(struct extents *e)
+{
+        e->xmin = -1e300;
+        e->ymin = -1e300;
+        e->xmax = 1e300;
+        e->ymax = 1e300;
+}
+
+static void
+extents_update(struct extents *e, double x, double y)
+{
+        if (x < e->xmin) e->xmin = x;
+        if (x > e->xmax) e->xmax = x;
+        if (y < e->ymin) e->ymin = y;
+        if (y > e->ymax) e->ymax = y;
+}
+
+static void
+extents_clip(struct extents *e, double *x, double *y)
+{
+        if (*x < e->xmin) *x = e->xmin;
+        if (*x > e->xmax) *x = e->xmax;
+        if (*y < e->ymin) *y = e->ymin;
+        if (*y > e->ymax) *y = e->ymax;
+}
+
+static struct extents
+program_extents(struct program *pgm)
+{
+        size_t pc = 0;
+        size_t size = pgm->size;
+        union mem *mem = pgm->mem;
+        struct extents extents[1];
+        struct extents clip[1];
+        struct point p;
+
+        extents_init_empty(extents);
+        extents_init_full(clip);
+
+        while (pc < size) {
+                switch (mem[pc].op) {
+                case CMD_LINETO:
+                case CMD_MOVETO:
+                        p.x = mem[pc+1].x;
+                        p.y = mem[pc+2].y;
+                        extents_clip(clip, &p.x, &p.y);
+                        extents_update(extents, p.x, p.y);
+                        pc += 3;
+                        break;
+                case CMD_CLOSEPATH:
+                        pc += 1;
+                        break;
+                case CMD_FILL:
+                        pc += 1;
+                        break;
+                case CMD_NONZERO_FILL_RULE:
+                        pc += 1;
+                        break;
+                case CMD_EVENODD_FILL_RULE:
+                        pc += 1;
+                        break;
+                case CMD_RESET_CLIP:
+                        clip->xmin = mem[pc+1].xmin;
+                        clip->ymin = mem[pc+2].ymin;
+                        clip->xmax = mem[pc+3].xmax;
+                        clip->ymax = mem[pc+4].ymax;
+                        pc += 5;
+                        break;
+                case CMD_RESIZE:
+                        clip->xmin = 0;
+                        clip->ymin = 0;
+                        clip->xmax = mem[pc+1].w;
+                        clip->ymax = mem[pc+2].h;
+                        pc += 3;
+                        break;
+                default:
+                        assert(0 && "illegal opcode");
+                }
+        }
+        assert(pc == size);
+        return *extents;
+}
+
 static void
 program_interpret(
         struct program *pgm,
@@ -531,6 +628,54 @@ program_interpret(
                         break;
                 case CMD_RESIZE:
                         cx_resize(cx, mem[pc+1].w, mem[pc+2].h);
+                        pc += 3;
+                        break;
+                default:
+                        assert(0 && "illegal opcode");
+                }
+        }
+        assert(pc == size);
+}
+
+static void
+program_translate(
+        struct program *pgm,
+        double dx, double dy)
+{
+        size_t pc = 0;
+        size_t size = pgm->size;
+        union mem *mem = pgm->mem;
+
+        while (pc < size) {
+                switch (mem[pc].op) {
+                case CMD_LINETO:
+                case CMD_MOVETO:
+                        mem[pc+1].x += dx;
+                        mem[pc+2].y += dy;
+                        pc += 3;
+                        break;
+                case CMD_CLOSEPATH:
+                        pc += 1;
+                        break;
+                case CMD_FILL:
+                        pc += 1;
+                        break;
+                case CMD_NONZERO_FILL_RULE:
+                        pc += 1;
+                        break;
+                case CMD_EVENODD_FILL_RULE:
+                        pc += 1;
+                        break;
+                case CMD_RESET_CLIP:
+                        mem[pc+1].xmin += dx;
+                        mem[pc+2].ymin += dy;
+                        mem[pc+3].xmax += dx;
+                        mem[pc+4].ymax += dy;
+                        pc += 5;
+                        break;
+                case CMD_RESIZE:
+                        dx = 0.0;
+                        dy = 0.0;
                         pc += 3;
                         break;
                 default:
@@ -771,6 +916,10 @@ main(int argc, char **argv)
         int do_timer = 0;
         int do_clear = 0;
         struct backend_ops *backend = NULL;
+        struct extents extents;
+        double dx = 0.0;
+        double dy = 0.0;
+        double ms;
 
         for (i=1; i<argc; i++) {
                 int usage = 0;
@@ -861,10 +1010,6 @@ main(int argc, char **argv)
                 exit(1);
         }
 
-        cx_init(cx, backend);
-        cx_resize(cx, width, height);
-        cx_reset_clip(cx, 0, 0, width, height);
-
         program_init(pgm);
         if (nonzero_fill)
                 program_emit_nonzero_fill_rule(pgm);
@@ -872,21 +1017,49 @@ main(int argc, char **argv)
                 program_emit_evenodd_fill_rule(pgm);
 
         err = program_parse_stream(pgm, fp);
-        if (!err) {
-                double ms = get_current_ms();
-                for (i=1; i<=niter; i++) {
-                        if (do_clear) image_clear(cx->image);
-                        cx_reset_clip(cx, 0,0, width, height);
-                        program_interpret(pgm, cx);
+        if (err) {
+                exit(1);
+        }
+        extents = program_extents(pgm);
+
+        if (!have_width) {
+                if (extents.xmin <= extents.xmax) {
+                        width = extents.xmax - extents.xmin + 1;
+                        dx = -extents.xmin;
                 }
-                ms = get_current_ms() - ms;
-                if (do_timer) {
-                        fprintf(stderr,
-                                "%d iterations took %f ms at %f ms / iter and %f iter / sec\n",
-                                niter, ms, ms / (niter*1.0),
-                                niter / ms * 1000.0);
+                else {
+                        width = 1;
                 }
         }
+        if (!have_height) {
+                if (extents.ymin <= extents.ymax) {
+                        height = extents.ymax - extents.ymin + 1;
+                        dy = -extents.ymin;
+                }
+                else {
+                        height = 1;
+                }
+        }
+
+        program_translate(pgm, dx, dy);
+
+        cx_init(cx, backend);
+        cx_resize(cx, width, height);
+
+        ms = get_current_ms();
+        for (i=1; i<=niter; i++) {
+                if (do_clear) image_clear(cx->image);
+                cx_reset_clip(cx, 0, 0, width, height);
+                program_interpret(pgm, cx);
+        }
+        ms = get_current_ms() - ms;
+        if (do_timer) {
+                fprintf(stderr,
+                        "%d iterations took %f ms at %f ms / iter and %f iter / sec\n",
+                        niter, ms, ms / (niter*1.0),
+                        niter / ms * 1000.0);
+        }
+
         if (!err && !no_pgm) {
                 image_save_as_pgm_to_stream(cx->image, stdout);
         }
