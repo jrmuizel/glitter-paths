@@ -1003,29 +1003,34 @@ active_list_sort(struct active_list *active)
     /* Insert sort edges on the active list by their x positions. */
     struct edge *sorted_head = NULL;
     struct edge *head = active->head;
-    int min_h = INT_MAX;
+    struct edge **pprev = &sorted_head;
+    int x;
 
     while (NULL != head) {
+	struct edge *prev = *pprev;
 	struct edge *next = head->next;
-	struct edge **pprev = &sorted_head;
+	x = head->x.quo;
 
-	while (1) {
-	    struct edge *prev = *pprev;
-	    if (NULL == prev || prev->x.quo >= head->x.quo)
-		break;
-	    pprev = &prev->next;
+	if (NULL == prev || x < prev->x.quo) {
+	    pprev = &sorted_head;
 	}
 
-	if (head->h < min_h)
-	    min_h = head->h;
+	while (1) {
+	    UNROLL3({
+		prev = *pprev;
+		if (NULL == prev || prev->x.quo >= x)
+		    break;
+		pprev = &prev->next;
+	    });
+	}
 
 	head->next = *pprev;
 	*pprev = head;
 
 	head = next;
     }
+
     active->head = sorted_head;
-    active->min_h = min_h;
 }
 
 /* Test if the edges on the active list can be safely advanced by a
