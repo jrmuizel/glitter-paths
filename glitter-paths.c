@@ -900,25 +900,8 @@ _polygon_insert_edge_into_its_y_bucket(
     struct polygon *polygon,
     struct edge *e)
 {
-    grid_scaled_y_t ytop = e->ytop;
-    grid_scaled_x_t x = e->x.quo;
-    unsigned ix = (ytop - polygon->ymin) / EDGE_Y_BUCKET_HEIGHT;
-    struct edge **ptail;
-
-    /* Insert the new edge into its sorted y-bucket. */
-    ptail = &polygon->y_buckets[ix];
-    while (1) {
-	struct edge *tail;
-
-	UNROLL3({
-	    tail = *ptail;
-	    if (NULL == tail || tail->ytop > ytop)
-		break;
-	    if (tail->ytop == ytop && tail->x.quo >= x)
-		break;
-	    ptail = &tail->next;
-	});
-    }
+    unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop, polygon->ymin);
+    struct edge **ptail = &polygon->y_buckets[ix];
     e->next = *ptail;
     *ptail = e;
 }
@@ -1015,6 +998,42 @@ active_list_fini(
     active_list_reset(active);
 }
 
+/* Merge the edges in an unsorted list of edges into a sorted
+ * list. The sort order is edges ascending by edge->x.quo.  Returns
+ * the new head of the sorted list. */
+static struct edge *
+merge_unsorted_edges(struct edge *sorted_head, struct edge *unsorted_head)
+{
+    struct edge *head = unsorted_head;
+    struct edge **pprev = &sorted_head;
+    int x;
+
+    while (NULL != head) {
+	struct edge *prev = *pprev;
+	struct edge *next = head->next;
+	x = head->x.quo;
+
+	if (NULL == prev || x < prev->x.quo) {
+	    pprev = &sorted_head;
+	}
+
+	while (1) {
+	    UNROLL3({
+		prev = *pprev;
+		if (NULL == prev || prev->x.quo >= x)
+		    break;
+		pprev = &prev->next;
+	    });
+	}
+
+	head->next = *pprev;
+	*pprev = head;
+
+	head = next;
+    }
+    return sorted_head;
+}
+
 static void
 active_list_sort(struct active_list *active)
 {
@@ -1103,30 +1122,29 @@ active_list_merge_edges_from_polygon(
     grid_scaled_y_t y,
     struct polygon *polygon)
 {
+    /* Split off the edges on the current subrow and merge them into
+     * the active list. */
     unsigned ix = EDGE_Y_BUCKET_INDEX(y, polygon->ymin);
-    struct edge **pprev = &active->head;
-    struct edge *edge = polygon->y_buckets[ix];
     int min_h = active->min_h;
+    struct edge *subrow_edges = NULL;
+    struct edge **ptail = &polygon->y_buckets[ix];
 
-    while (NULL != edge && y == edge->ytop) {
-	struct edge *next = edge->next;
+    while (1) {
+	struct edge *tail = *ptail;
+	if (NULL == tail) break;
 
-	while (1) {
-	    struct edge *prev = *pprev;
-	    if (NULL == prev || prev->x.quo >= edge->x.quo)
-		break;
-	    pprev = &prev->next;
+	if (y == tail->ytop) {
+	    *ptail = tail->next;
+	    tail->next = subrow_edges;
+	    subrow_edges = tail;
+	    if (tail->h < min_h)
+		min_h = tail->h;
 	}
-
-	if (edge->h < min_h)
-	    min_h = edge->h;
-
-	edge->next = *pprev;
-	*pprev = edge;
-
-	edge = next;
+	else {
+	    ptail = &tail->next;
+	}
     }
-    polygon->y_buckets[ix] = edge;
+    active->head = merge_unsorted_edges(active->head, subrow_edges);
     active->min_h = min_h;
 }
 
