@@ -876,6 +876,10 @@ struct backend_ops cairo_backend[1] = {{
 }};
 #endif /* WITH_CAIRO */
 
+/*
+ * Arg parsing and main.
+ */
+
 static char *
 prefix(char const *s, char const *pref)
 {
@@ -889,93 +893,91 @@ prefix(char const *s, char const *pref)
 struct {
         char const *name;
         struct backend_ops *ops;
-} const backends[] = {
-#ifdef WITH_GLITTER_PATHS
+} const Backends[] = {
+#       ifdef WITH_GLITTER_PATHS
         { "glitter-paths", glitter_backend },
-#endif
-#ifdef WITH_CAIRO
+#       endif
+#       ifdef WITH_CAIRO
         { "cairo", cairo_backend },
-#endif
+#       endif
         { NULL, NULL }
 };
 
-int
-main(int argc, char **argv)
+struct args {
+        char const *filename;
+        char const *backendname;
+        struct backend_ops *backendops;
+        char const *fillrulename;
+        int nonzero_fill;
+        int niter, timer, clear, no_pgm;
+        int width, height;
+};
+
+static struct args
+parse_args(int argc, char **argv)
 {
-        struct context cx[1];
-        struct program pgm[1];
-        char const *filename = NULL;
-        int width = 512, have_width = 0;
-        int height = 512, have_height = 0;
-        FILE *fp;
-        int err=0;
+        struct args args = {
+                NULL,           /* <filename> */
+                NULL,           /* --backend=<name> */
+                NULL,           /*   backend ops */
+                NULL,           /* --fillrule=<name> */
+                1,              /*    nonzero_fill */
+                1,              /* --niter=<num iters> */
+                0,              /* --timer: do we show it? */
+                0,              /* --clear (frames between iters) */
+                0,              /* --no-pgm (at end of run) */
+                0,              /* {width] */
+                0               /* [height] */
+        };
         int i;
-        int niter = 1;
-        int nonzero_fill = 1;
-        int no_pgm = 0;
-        int do_timer = 0;
-        int do_clear = 0;
-        struct backend_ops *backend = NULL;
-        struct extents extents;
-        double dx = 0.0;
-        double dy = 0.0;
-        double ms;
 
         for (i=1; i<argc; i++) {
                 int usage = 0;
                 char *arg;
-                if (0==strcmp("--fill-rule=even-odd", argv[i])) {
-                        nonzero_fill = 0;
-                }
-                else if (0==strcmp("--fill-rule=winding", argv[i])) {
-                        nonzero_fill = 1;
+                if ((arg = prefix(argv[i], "--fill-rule="))) {
+                        args.fillrulename = arg;
                 }
                 else if ((arg = prefix(argv[i], "--backend="))) {
-                        int j;
-                        backend = NULL;
-                        for (j=0; backends[j].name; j++) {
-                                if (prefix(backends[j].name, arg)) {
-                                        break;
-                                }
-                        }
-                        backend = backends[j].ops;
-                        if (!backend) {
-                                fprintf(stderr, "unknown backend '%s'\n", arg);
-                                fprintf(stderr, "available backends: ");
-                                for (j=0; backends[j].name; j++) {
-                                        fprintf(stderr, "%s ", backends[j].name);
-                                }
-                                fprintf(stderr, "\n");
-                                exit(1);
-                        }
+                        args.backendname = arg;
                 }
                 else if (0==strcmp("--help", argv[i])) {
                         usage = 1;
                 }
                 else if (0==strcmp("--timer", argv[i])) {
-                        do_timer = 1;
+                        args.timer = 1;
                 }
                 else if ((arg = prefix(argv[i], "--niter="))) {
-                        niter = atoi(arg);
+                        args.niter = atoi(arg);
+                        if (args.niter <= 0) {
+                                fprintf(stderr,
+                                        "bad --niter %s\n", arg);
+                                exit(1);
+                        }
                 }
                 else if (0==strcmp("--no-pgm", argv[i])) {
-                        no_pgm = 1;
+                        args.no_pgm = 1;
                 }
                 else if (0==strcmp("--clear", argv[i])) {
-                        do_clear = 1;
+                        args.clear = 1;
                 }
-                else if (!filename) {
-                        filename = argv[i];
+                else if (!args.filename) {
+                        args.filename = argv[i];
                 }
-                else if (!have_width) {
-                        have_width = 1;
-                        width = atoi(argv[i]);
-                        assert(width>0);
+                else if (args.width <= 0) {
+                        args.width = atoi(argv[i]);
+                        if (args.width <= 0) {
+                                fprintf(stderr,
+                                        "bad width %s\n", argv[i]);
+                                usage = 1;
+                        }
                 }
-                else if (!have_height) {
-                        have_height = 1;
-                        height = atoi(argv[i]);
-                        assert(height>0);
+                else if (args.height <= 0) {
+                        args.height = atoi(argv[i]);
+                        if (args.height <= 0) {
+                                fprintf(stderr,
+                                        "bad height %s\n", argv[i]);
+                                usage = 1;
+                        }
                 }
                 else {
                         usage = 1;
@@ -986,81 +988,160 @@ main(int argc, char **argv)
                                 "[--fill-rule=even-odd|winding] "
                                 "[--niter=<n>] "
                                 "[--timer] "
+                                "[--clear] "
                                 "[--no-pgm] "
                                 "[--backend=<...>] "
                                 "[filename|-] [width] [height]\n");
                         exit(1);
                 }
         }
-        filename = filename ? filename : "-";
 
-        if (!backend) {
-                backend = backends[0].ops;
-                if (!backend) {
+        if (!args.filename) {
+                args.filename = "-";
+        }
+
+        if (args.fillrulename) {
+                char const *name = args.fillrulename;
+                if (prefix(name, "even-odd")) {
+                        args.nonzero_fill = 0;
+                }
+                else if (prefix(name, "nonzero")) {
+                        args.nonzero_fill = 1;
+                }
+                else {
+                        fprintf(stderr, "unknown fill rule name '%s'\n",
+                                name);
+                        exit(1);
+                }
+        }
+
+        if (!args.backendname) {
+                args.backendname = Backends[0].name;
+                if (!args.backendname) {
                         fprintf(stderr, "no backends at all!\n");
                         exit(1);
                 }
         }
 
-        fp = strcmp("-", filename) ? fopen(filename, "rb") : stdin;
+        if (!args.backendops) {
+                char const *name = args.backendname;
+                int num_found = 0;
+                int first_found = 0;
+                int list_avail = 0;
+                for (i=0; Backends[i].name; i++) {
+                        if (prefix(Backends[i].name, name)) {
+                                ++num_found;
+                                if (1 == num_found)
+                                        first_found = i;
+                        }
+                }
+                if (0 == num_found) {
+                        fprintf(stderr, "unknown backend '%s'\n", name);
+                        list_avail = 1;
+                }
+                if (1 < num_found) {
+                        fprintf(stderr, "too many matches: ");
+                        for (i=0; Backends[i].name; i++) {
+                                if (prefix(Backends[i].name, name)) {
+                                        fprintf(stderr, "'%s' ",
+                                                Backends[i].name);
+                                }
+                        }
+                        fprintf(stderr, "\n");
+                        exit(1);
+                }
+                if (list_avail) {
+                        fprintf(stderr, "available backends: ");
+                        for (i=0; Backends[i].name; i++) {
+                                fprintf(stderr, "'%s' ", Backends[i].name);
+                        }
+                        fprintf(stderr, "\n");
+                        exit(1);
+                }
+                args.backendops = Backends[first_found].ops;
+        }
+        return args;
+}
+
+int
+main(int argc, char **argv)
+{
+        struct context cx[1];
+        struct program pgm[1];
+        struct args args;
+
+        FILE *fp;
+        int err=0;
+        struct extents extents;
+        double dx = 0.0;
+        double dy = 0.0;
+        double ms;
+        int i;
+
+        /* Parse args */
+        args = parse_args(argc, argv);
+
+        /* Parse the path into a program. */
+        fp = strcmp("-", args.filename) ? fopen(args.filename, "rb") : stdin;
         if (NULL == fp) {
                 fprintf(stderr, "can't open file '%s': %s\n",
-                        filename,
+                        args.filename,
                         strerror(errno));
                 exit(1);
         }
 
         program_init(pgm);
-        if (nonzero_fill)
+        if (args.nonzero_fill)
                 program_emit_nonzero_fill_rule(pgm);
         else
                 program_emit_evenodd_fill_rule(pgm);
 
         err = program_parse_stream(pgm, fp);
         if (err) {
+                fprintf(stderr, "parse error\n");
                 exit(1);
         }
-        extents = program_extents(pgm);
 
-        if (!have_width) {
+        /* Crop the context if we don't have an explicit width,
+         * height. */
+        extents = program_extents(pgm);
+        if (args.width <= 0) {
+                args.width = 1;
                 if (extents.xmin <= extents.xmax) {
-                        width = extents.xmax - extents.xmin + 1;
+                        args.width = extents.xmax - extents.xmin + 1;
                         dx = -extents.xmin;
                 }
-                else {
-                        width = 1;
-                }
         }
-        if (!have_height) {
+        if (args.height <= 0) {
+                args.height = 1;
                 if (extents.ymin <= extents.ymax) {
-                        height = extents.ymax - extents.ymin + 1;
+                        args.height = extents.ymax - extents.ymin + 1;
                         dy = -extents.ymin;
                 }
-                else {
-                        height = 1;
-                }
         }
-
         program_translate(pgm, dx, dy);
 
-        cx_init(cx, backend);
-        cx_resize(cx, width, height);
+        /* Loop rendering! */
+        cx_init(cx, args.backendops);
+        cx_resize(cx, args.width, args.height);
 
         ms = get_current_ms();
-        for (i=1; i<=niter; i++) {
-                if (do_clear) image_clear(cx->image);
-                cx_reset_clip(cx, 0, 0, width, height);
+        for (i=1; i<=args.niter; i++) {
+                if (args.clear) image_clear(cx->image);
+                cx_reset_clip(cx, 0, 0, args.width, args.height);
                 program_interpret(pgm, cx);
         }
+
+        /* Dump output and clean up. */
         ms = get_current_ms() - ms;
-        if (do_timer) {
+        if (args.timer) {
                 fprintf(stderr,
                         "%d iterations took %f ms at %f ms / iter and %f iter / sec\n",
-                        niter, ms, ms / (niter*1.0),
-                        niter / ms * 1000.0);
+                        args.niter, ms, ms / (args.niter*1.0),
+                        args.niter / ms * 1000.0);
         }
 
-        if (!err && !no_pgm) {
+        if (!args.no_pgm) {
                 image_save_as_pgm_to_stream(cx->image, stdout);
         }
 
