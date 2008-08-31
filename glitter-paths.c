@@ -732,7 +732,7 @@ cell_list_render_edge_to_cells(
 
     x2.quo += edge->dxdy_full.quo;
     x2.rem += edge->dxdy_full.rem;
-    if (x2.rem >= edge->dy) {
+    if (x2.rem >= 0) {
 	++x2.quo;
 	x2.rem -= edge->dy;
     }
@@ -988,6 +988,8 @@ polygon_add_edge(
 
     _polygon_insert_edge_into_its_y_bucket(polygon, e);
 
+    e->x.rem -= dy;		/* Bias the remainder for faster
+				 * edge advancement. */
     return GLITTER_STATUS_SUCCESS;
 }
 
@@ -1080,7 +1082,7 @@ active_list_can_step_row(
 
 	    x.quo += e->dxdy_full.quo;
 	    x.rem += e->dxdy_full.rem;
-	    if (x.rem >= e->dy)
+	    if (x.rem >= 0)
 		++x.quo;
 
 	    if (x.quo <= prev_x)
@@ -1149,7 +1151,7 @@ active_list_substep_edges(
 	    if (0 != --edge->h) {
 		edge->x.quo += edge->dxdy.quo;
 		edge->x.rem += edge->dxdy.rem;
-		if (edge->x.rem >= edge->dy) {
+		if (edge->x.rem >= 0) {
 		    ++edge->x.quo;
 		    edge->x.rem -= edge->dy;
 		}
@@ -1292,7 +1294,7 @@ apply_nonzero_fill_rule_and_step_edges(
 
 	    right_edge->x.quo += right_edge->dxdy_full.quo;
 	    right_edge->x.rem += right_edge->dxdy_full.rem;
-	    if (right_edge->x.rem >= right_edge->dy) {
+	    if (right_edge->x.rem >= 0) {
 		++right_edge->x.quo;
 		right_edge->x.rem -= right_edge->dy;
 	    }
