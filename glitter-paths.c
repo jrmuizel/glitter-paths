@@ -667,11 +667,17 @@ cell_list_render_subspan_to_cells(
     grid_scaled_x_t x1,
     grid_scaled_x_t x2)
 {
+    struct cell_pair p;
+#if GRID_X == 256
+    int ix1 = x1 >> 8;
+    int ix2 = x2 >> 8;
+    int fx1 = x1 & 255;
+    int fx2 = x2 & 255;
+#else
     int ix1 = x1 / GRID_X;
     int ix2 = x2 / GRID_X;
     int fx1 = x1 % GRID_X;
     int fx2 = x2 % GRID_X;
-    struct cell_pair p;
 
     if (fx1 < 0) {
 	--ix1;
@@ -681,7 +687,7 @@ cell_list_render_subspan_to_cells(
 	--ix2;
 	fx2 += GRID_X;
     }
-
+#endif
     p = cell_list_find2(cells, ix1, ix2);
     if (p.cell1 && p.cell2) {
 	p.cell1->area += 2*fx1;
@@ -1450,12 +1456,21 @@ glitter_scan_converter_add_edge(
     int dir)
 {
     /* XXX: check for overflow! */
-    grid_scaled_x_t sx1 = (GRID_X*x1) >> GLITTER_INPUT_BITS;
-    grid_scaled_x_t sx2 = (GRID_X*x2) >> GLITTER_INPUT_BITS;
     grid_scaled_y_t sy1 = (GRID_Y*y1) >> GLITTER_INPUT_BITS;
     grid_scaled_y_t sy2 = (GRID_Y*y2) >> GLITTER_INPUT_BITS;
-    return polygon_add_edge(
-	converter->polygon, sx1, sy1, sx2, sy2, dir);
+    if (sy1 == sy2)
+	return GLITTER_STATUS_SUCCESS;
+    else {
+#if GRID_X != GLITTER_INPUT_BITS
+	grid_scaled_x_t sx1 = (GRID_X*x1) >> GLITTER_INPUT_BITS;
+	grid_scaled_x_t sx2 = (GRID_X*x2) >> GLITTER_INPUT_BITS;
+#else
+	grid_scaled_x_t sx1 = x1;
+	grid_scaled_x_t sx2 = x2;
+#endif
+	return polygon_add_edge(
+	    converter->polygon, sx1, sy1, sx2, sy2, dir);
+    }
 }
 
 I glitter_status_t
