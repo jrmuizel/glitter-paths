@@ -195,6 +195,7 @@ cx_closepath(struct context *cx)
 static void
 cx_fill(struct context *cx)
 {
+        cx_closepath(cx);
         cx->backend->fill(cx);
         cx->current_point.valid = 0;
         cx->first_point.valid = 0;
