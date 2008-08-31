@@ -667,7 +667,6 @@ cell_list_render_subspan_to_cells(
     grid_scaled_x_t x1,
     grid_scaled_x_t x2)
 {
-    struct cell_pair p;
 #if GRID_X == 256
     int ix1 = x1 >> 8;
     int ix2 = x2 >> 8;
@@ -688,13 +687,24 @@ cell_list_render_subspan_to_cells(
 	fx2 += GRID_X;
     }
 #endif
-    p = cell_list_find2(cells, ix1, ix2);
-    if (p.cell1 && p.cell2) {
-	p.cell1->area += 2*fx1;
-	p.cell1->cover += 2*GRID_X;
-	p.cell2->area -= 2*fx2;
-	p.cell2->cover -= 2*GRID_X;
-	return GLITTER_STATUS_SUCCESS;
+
+    if (ix1 != ix2) {
+	struct cell_pair p;
+	p = cell_list_find2(cells, ix1, ix2);
+	if (p.cell1 && p.cell2) {
+	    p.cell1->area += 2*fx1;
+	    p.cell1->cover += 2*GRID_X;
+	    p.cell2->area -= 2*fx2;
+	    p.cell2->cover -= 2*GRID_X;
+	    return GLITTER_STATUS_SUCCESS;
+	}
+    }
+    else {
+	struct cell *cell = cell_list_find(cells, ix1);
+	if (cell) {
+	    cell->area += 2*(fx1-fx2);
+	    return GLITTER_STATUS_SUCCESS;
+	}
     }
     return GLITTER_STATUS_NO_MEMORY;
 }
