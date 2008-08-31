@@ -12,6 +12,7 @@ exit $?
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <sys/time.h>
 #include <time.h>
@@ -1109,14 +1110,14 @@ main(int argc, char **argv)
         if (args.width <= 0) {
                 args.width = 1;
                 if (extents.xmin <= extents.xmax) {
-                        args.width = extents.xmax - extents.xmin + 1;
+                        args.width = ceil(extents.xmax - extents.xmin);
                         dx = -extents.xmin;
                 }
         }
         if (args.height <= 0) {
                 args.height = 1;
                 if (extents.ymin <= extents.ymax) {
-                        args.height = extents.ymax - extents.ymin + 1;
+                        args.height = ceil(extents.ymax - extents.ymin);
                         dy = -extents.ymin;
                 }
         }
