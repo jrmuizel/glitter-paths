@@ -1034,42 +1034,6 @@ merge_unsorted_edges(struct edge *sorted_head, struct edge *unsorted_head)
     return sorted_head;
 }
 
-static void
-active_list_sort(struct active_list *active)
-{
-    /* Insert sort edges on the active list by their x positions. */
-    struct edge *sorted_head = NULL;
-    struct edge *head = active->head;
-    struct edge **pprev = &sorted_head;
-    int x;
-
-    while (NULL != head) {
-	struct edge *prev = *pprev;
-	struct edge *next = head->next;
-	x = head->x.quo;
-
-	if (NULL == prev || x < prev->x.quo) {
-	    pprev = &sorted_head;
-	}
-
-	while (1) {
-	    UNROLL3({
-		prev = *pprev;
-		if (NULL == prev || prev->x.quo >= x)
-		    break;
-		pprev = &prev->next;
-	    });
-	}
-
-	head->next = *pprev;
-	*pprev = head;
-
-	head = next;
-    }
-
-    active->head = sorted_head;
-}
-
 /* Test if the edges on the active list can be safely advanced by a
  * full row without intersections. */
 inline static int
@@ -1156,7 +1120,7 @@ active_list_substep_edges(
 {
     struct edge **pprev = &active->head;
     grid_scaled_x_t prev_x = INT_MIN;
-    int need_sort = 0;
+    struct edge *unsorted = NULL;
 
     while (1) {
 	struct edge *edge;
@@ -1174,18 +1138,23 @@ active_list_substep_edges(
 		    edge->x.rem -= edge->dy;
 		}
 
-		if (edge->x.quo < prev_x)
-		    need_sort = 1;
+		if (edge->x.quo < prev_x) {
+		    *pprev = edge->next;
+		    edge->next = unsorted;
+		    unsorted = edge;
+		} else {
+		    prev_x = edge->x.quo;
+		    pprev = &edge->next;
+		}
 
-		prev_x = edge->x.quo;
-		pprev = &edge->next;
 	    } else {
 		*pprev = edge->next;
 	    }
 	});
     }
-    if (need_sort)
-	active_list_sort(active);
+
+    if (unsorted)
+	active->head = merge_unsorted_edges(active->head, unsorted);
 }
 
 /* Render spans to the cell list corresponding to parts of the polygon
