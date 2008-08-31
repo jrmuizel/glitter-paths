@@ -875,12 +875,18 @@ polygon_reset(
     if (h > 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT)
 	goto bail_no_mem; /* even if you could, you wouldn't want to. */
 
-    p = xrecalloc(
-	polygon->y_buckets,
-	num_buckets,
-	sizeof(struct edge*));
-    if (NULL == p)
-	goto bail_no_mem;
+    if (num_buckets > 0) {
+	p = xrecalloc(
+	    polygon->y_buckets,
+	    num_buckets,
+	    sizeof(struct edge*));
+	if (NULL == p)
+	    goto bail_no_mem;
+    }
+    else {
+	free(polygon->y_buckets);
+	p = NULL;
+    }
     polygon->y_buckets = p;
 
     polygon->ymin = ymin;
