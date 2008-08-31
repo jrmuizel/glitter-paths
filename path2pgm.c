@@ -288,7 +288,7 @@ program_emit_int(struct program *p, int i)
 }
 
 static void
-program_emit_double(struct program *p, int x)
+program_emit_double(struct program *p, double x)
 {
         union mem c;
         c.double_ = x;
