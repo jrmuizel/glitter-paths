@@ -1,11 +1,3 @@
-#define BIN_SH /*
-CFLAGS="-O3 -funroll-all-loops"
-#CFLAGS="-O2"
-#CFLAGS="-O0"
-gcc $CFLAGS -DWITH_CAIRO -g -Wall -W -o `basename $0 .c` $0 `pkg-config cairo --cflags --libs`
-#gcc $CFLAGS -g -Wall -W -o `basename $0 .c` $0
-exit $?
-*/
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -17,8 +9,6 @@ exit $?
 #include <sys/time.h>
 #include <time.h>
 
-#define WITH_GLITTER_PATHS
-
 static double
 get_current_ms()
 {
@@ -27,60 +17,19 @@ get_current_ms()
         return tv.tv_sec*1000.0 + tv.tv_usec/1000.0;
 }
 
-/*
- * A8 images
- */
-
-struct image {
-        unsigned char *pixels;
-        unsigned width;
-        unsigned height;
-        size_t stride;
-};
-
 static void
-image_clear(struct image *im)
-{
-        unsigned y;
-        unsigned h = im->height;
-        unsigned w = im->width;
-        size_t stride = im->stride;
-        unsigned char *p = im->pixels;
-        for (y=0; y<h; y++) {
-                memset(p, 0, w);
-                p += stride;
-        }
-}
-
-static void
-image_fini(struct image *im)
-{
-        free(im->pixels);
-        memset(im, 0, sizeof(struct image));
-}
-
-static void
-image_init(
-        struct image *im,
-        unsigned width, unsigned height)
-{
-        im->stride = (width + 3) & ~3;
-        im->pixels = malloc(im->stride*height);
-        assert(im->pixels);
-        im->width = width;
-        im->height = height;
-        image_clear(im);
-}
-
-static void
-image_save_as_pgm_to_stream(struct image *im, FILE *fp)
+save_data_as_pgm_to_stream(
+        unsigned char *pixels,
+        size_t stride,
+        unsigned width, unsigned height,
+        FILE *fp)
 {
         unsigned x, y;
         fprintf(fp, "P2\n%u %u\n255\n",
-                im->width, im->height);
-        for (y=0; y<im->height; y++) {
-                for (x=0; x<im->width; x++) {
-                        fprintf(fp, "%d ", im->pixels[x + y*im->stride]);
+                width, height);
+        for (y=0; y<height; y++) {
+                for (x=0; x<width; x++) {
+                        fprintf(fp, "%d ", pixels[x + y*stride]);
                 }
                 fprintf(fp, "\n");
         }
@@ -88,131 +37,32 @@ image_save_as_pgm_to_stream(struct image *im, FILE *fp)
 
 /*
  * Generic rendering context
+ *
+ *  The backend under test defines these.
  */
 
 struct context;
 
-struct backend_ops {
-        void (*init)(struct context *cx);
-        void (*fini)(struct context *cx);
-        void (*set_fill_rule)(struct context *cx, int use_nonzero_fill);
-        void (*moveto)(struct context *cx, double x, double y);
-        void (*lineto)(struct context *cx, double x, double y);
-        void (*closepath)(struct context *cx);
-        void (*fill)(struct context *cx);
-        void (*reset_clip)(struct context *cx,
-                           int xmin, int ymin,
-                           int xmax, int ymax);
-        void (*resize)(struct context *cx);
-};
-
-struct point {
-        double x, y;
-        int valid;
-};
-
-struct context {
-        struct image image[1];
-
-        struct backend_ops *backend;
-        void *backend_cx;
-
-        /* Path state. */
-        struct point current_point;
-        struct point first_point;
-};
-
-static void
-cx_resize(struct context *cx,
-          unsigned width, unsigned height)
-{
-        image_fini(cx->image);
-        image_init(cx->image, width, height);
-        cx->backend->resize(cx);
-}
-
-static void
-cx_init(struct context *cx,
-        struct backend_ops *backend)
-{
-        memset(cx, 0, sizeof(struct context));
-
-        image_init(cx->image, 0, 0);
-        cx->backend = backend;
-        backend->init(cx);
-}
-
-static void
-cx_fini(struct context *cx)
-{
-        cx->backend->fini(cx);
-        image_fini(cx->image);
-        memset(cx, 0, sizeof(struct context));
-}
-
-static void
-cx_reset_clip(
+struct context *cx_create();
+void cx_resize(struct context *cx, unsigned width, unsigned height);
+void cx_clear(struct context *cx);
+void cx_destroy(struct context *cx);
+void cx_reset_clip(struct context *cx, int xmin, int ymin, int xmax, int ymax);
+void cx_moveto(struct context *cx, double x, double y);
+void cx_lineto(struct context *cx, double x, double y);
+void cx_closepath(struct context *cx);
+void cx_fill(struct context *cx);
+void cx_set_fill_rule(struct context *cx, int nonzero_fill);
+void cx_get_pixels(
         struct context *cx,
-        int xmin, int ymin,
-        int xmax, int ymax)
-{
-        cx->backend->reset_clip(cx, xmin, ymin, xmax, ymax);
-}
-
-static void
-cx_moveto(struct context *cx,
-          double x, double y)
-{
-        cx->current_point.x = x;
-        cx->current_point.y = y;
-        cx->current_point.valid = 1;
-        cx->first_point = cx->current_point;
-        cx->backend->moveto(cx, x, y);
-}
-
-static void
-cx_lineto(struct context *cx,
-          double x, double y)
-{
-        if (cx->current_point.valid) {
-                cx->backend->lineto(cx, x, y);
-                cx->current_point.x = x;
-                cx->current_point.y = y;
-                cx->current_point.valid = 1;
-        }
-        else {
-                cx_moveto(cx, x, y);
-        }
-}
-
-static void
-cx_closepath(struct context *cx)
-{
-        if (cx->first_point.valid) {
-                cx->backend->closepath(cx);
-        }
-}
-
-static void
-cx_fill(struct context *cx)
-{
-        cx_closepath(cx);
-        cx->backend->fill(cx);
-        cx->current_point.valid = 0;
-        cx->first_point.valid = 0;
-}
-
-static void
-cx_set_fill_rule(struct context *cx,
-                 int nonzero_fill)
-{
-        cx->backend->set_fill_rule(cx, nonzero_fill);
-}
+        unsigned char **OUT_pixels,
+        size_t *OUT_stride,
+        unsigned *OUT_width,
+        unsigned *OUT_height);
 
 /*
  * Path program
  */
-
 typedef enum {
         CMD_MOVETO,
         CMD_LINETO,
@@ -362,7 +212,10 @@ program_emit_resize(struct program *p, int w, int h)
 static int
 program_parse_stream(struct program *pgm, FILE *fp)
 {
-        struct point cp;
+        struct {
+                double x, y;
+                int valid;
+        } cp;
         cp.x = 0;
         cp.y = 0;
         cp.valid = 0;
@@ -536,7 +389,7 @@ program_extents(struct program *pgm)
         union mem *mem = pgm->mem;
         struct extents extents[1];
         struct extents clip[1];
-        struct point p;
+        double x, y;
 
         extents_init_empty(extents);
         extents_init_full(clip);
@@ -545,10 +398,10 @@ program_extents(struct program *pgm)
                 switch (mem[pc].op) {
                 case CMD_LINETO:
                 case CMD_MOVETO:
-                        p.x = mem[pc+1].x;
-                        p.y = mem[pc+2].y;
-                        extents_clip(clip, &p.x, &p.y);
-                        extents_update(extents, p.x, p.y);
+                        x = mem[pc+1].x;
+                        y = mem[pc+2].y;
+                        extents_clip(clip, &x, &y);
+                        extents_update(extents, x, y);
                         pc += 3;
                         break;
                 case CMD_CLOSEPATH:
@@ -688,197 +541,6 @@ program_translate(
 }
 
 /*
- * Glitter Paths backend
- */
-#ifdef WITH_GLITTER_PATHS
-#include "glitter-paths.c"
-
-struct glitter_backend {
-        glitter_scan_converter_t *converter;
-        int nonzero_fill;
-};
-
-static void
-be_glitter_init(struct context *cx)
-{
-        struct glitter_backend *be = calloc(sizeof(struct glitter_backend), 1);
-        be->converter = glitter_scan_converter_create();
-        assert(be->converter);
-        cx->backend_cx = be;
-}
-
-static void
-be_glitter_fini(struct context *cx)
-{
-        struct glitter_backend *be = cx->backend_cx;
-        glitter_scan_converter_destroy(be->converter);
-        free(be);
-        cx->backend_cx = NULL;
-}
-
-static void
-be_glitter_resize(struct context *cx)
-{
-        cx_reset_clip(cx, 0, 0, cx->image->width, cx->image->height);
-}
-
-static void
-be_glitter_reset_clip(struct context *cx,
-                   int xmin, int ymin, int xmax, int ymax)
-{
-        struct glitter_backend *be = cx->backend_cx;
-        assert(!glitter_scan_converter_reset(
-                       be->converter,
-                       xmin, ymin,
-                       xmax, ymax));
-}
-
-static void
-be_glitter_moveto(struct context *cx, double x, double y)
-{
-        (void)cx;
-        (void)x;
-        (void)y;
-}
-
-static void
-be_glitter_lineto(struct context *cx, double x, double y)
-{
-        struct glitter_backend *be = cx->backend_cx;
-        glitter_input_scaled_t x1 = cx->current_point.x * GLITTER_INPUT_SCALE;
-        glitter_input_scaled_t y1 = cx->current_point.y * GLITTER_INPUT_SCALE;
-        glitter_input_scaled_t x2 = x * GLITTER_INPUT_SCALE;
-        glitter_input_scaled_t y2 = y * GLITTER_INPUT_SCALE;
-        assert(!glitter_scan_converter_add_edge(
-                       be->converter, x1, y1, x2, y2, +1));
-
-}
-
-static void
-be_glitter_closepath(struct context *cx)
-{
-        cx_lineto(cx, cx->first_point.x, cx->first_point.y);
-}
-
-static void
-be_glitter_fill(struct context *cx)
-{
-        struct image *im = cx->image;
-        struct glitter_backend *be = cx->backend_cx;
-        glitter_status_t err;
-        err = glitter_scan_converter_render(
-                be->converter,
-                im->pixels,
-                im->stride,
-                be->nonzero_fill);
-        assert(!err);
-}
-
-static void
-be_glitter_set_fill_rule(struct context *cx, int nonzero_fill)
-{
-        struct glitter_backend *be = cx->backend_cx;
-        be->nonzero_fill = nonzero_fill;
-}
-
-struct backend_ops glitter_backend[1] = {{
-        be_glitter_init,
-        be_glitter_fini,
-        be_glitter_set_fill_rule,
-        be_glitter_moveto,
-        be_glitter_lineto,
-        be_glitter_closepath,
-        be_glitter_fill,
-        be_glitter_reset_clip,
-        be_glitter_resize
-}};
-#endif /* WITH_GLITTER_PATHS */
-
-/*
- * Cairo backend
- */
-#ifdef WITH_CAIRO
-#include <cairo.h>
-static void
-be_cairo_init(struct context *cx)
-{
-        cx->backend_cx = cairo_create(NULL); /* an error cx */
-}
-
-static void
-be_cairo_fini(struct context *cx)
-{
-        cairo_destroy(cx->backend_cx);
-}
-
-static void
-be_cairo_reset_clip(struct context *cx,
-                    int xmin, int ymin, int xmax, int ymax)
-{
-        cairo_t *cr = cx->backend_cx;
-        cairo_reset_clip(cr);
-        cairo_rectangle(cr, xmin, ymin, xmax-xmin, ymax-ymin);
-        cairo_clip(cr);
-}
-
-static void
-be_cairo_resize(struct context *cx)
-{
-        struct image *im = cx->image;
-        cairo_surface_t *surf = cairo_image_surface_create_for_data(
-                im->pixels, CAIRO_FORMAT_A8,
-                im->width, im->height, im->stride);
-        cairo_destroy(cx->backend_cx);
-        cx->backend_cx = cairo_create(surf);
-        cairo_surface_destroy(surf);
-}
-static void
-be_cairo_set_fill_rule(struct context *cx, int nonzero_fill)
-{
-        cairo_set_fill_rule(cx->backend_cx,
-                            nonzero_fill
-                            ? CAIRO_FILL_RULE_WINDING
-                            : CAIRO_FILL_RULE_EVEN_ODD);
-}
-
-static void
-be_cairo_moveto(struct context *cx, double x, double y)
-{
-        cairo_move_to(cx->backend_cx, x, y);
-}
-
-static void
-be_cairo_lineto(struct context *cx, double x, double y)
-{
-        cairo_line_to(cx->backend_cx, x, y);
-}
-
-static void
-be_cairo_closepath(struct context *cx)
-{
-        cairo_close_path(cx->backend_cx);
-}
-
-static void
-be_cairo_fill(struct context *cx)
-{
-        cairo_fill(cx->backend_cx);
-}
-
-struct backend_ops cairo_backend[1] = {{
-        be_cairo_init,
-        be_cairo_fini,
-        be_cairo_set_fill_rule,
-        be_cairo_moveto,
-        be_cairo_lineto,
-        be_cairo_closepath,
-        be_cairo_fill,
-        be_cairo_reset_clip,
-        be_cairo_resize
-}};
-#endif /* WITH_CAIRO */
-
-/*
  * Arg parsing and main.
  */
 
@@ -892,23 +554,8 @@ prefix(char const *s, char const *pref)
         return NULL;
 }
 
-struct {
-        char const *name;
-        struct backend_ops *ops;
-} const Backends[] = {
-#       ifdef WITH_GLITTER_PATHS
-        { "glitter-paths", glitter_backend },
-#       endif
-#       ifdef WITH_CAIRO
-        { "cairo", cairo_backend },
-#       endif
-        { NULL, NULL }
-};
-
 struct args {
         char const *filename;
-        char const *backendname;
-        struct backend_ops *backendops;
         char const *fillrulename;
         int nonzero_fill;
         int niter, timer, clear, no_pgm;
@@ -920,8 +567,6 @@ parse_args(int argc, char **argv)
 {
         struct args args = {
                 NULL,           /* <filename> */
-                NULL,           /* --backend=<name> */
-                NULL,           /*   backend ops */
                 NULL,           /* --fillrule=<name> */
                 1,              /*    nonzero_fill */
                 1,              /* --niter=<num iters> */
@@ -938,9 +583,6 @@ parse_args(int argc, char **argv)
                 char *arg;
                 if ((arg = prefix(argv[i], "--fill-rule="))) {
                         args.fillrulename = arg;
-                }
-                else if ((arg = prefix(argv[i], "--backend="))) {
-                        args.backendname = arg;
                 }
                 else if (0==strcmp("--help", argv[i])) {
                         usage = 1;
@@ -992,7 +634,6 @@ parse_args(int argc, char **argv)
                                 "[--timer] "
                                 "[--clear] "
                                 "[--no-pgm] "
-                                "[--backend=<...>] "
                                 "[filename|-] [width] [height]\n");
                         exit(1);
                 }
@@ -1017,58 +658,13 @@ parse_args(int argc, char **argv)
                 }
         }
 
-        if (!args.backendname) {
-                args.backendname = Backends[0].name;
-                if (!args.backendname) {
-                        fprintf(stderr, "no backends at all!\n");
-                        exit(1);
-                }
-        }
-
-        if (!args.backendops) {
-                char const *name = args.backendname;
-                int num_found = 0;
-                int first_found = 0;
-                int list_avail = 0;
-                for (i=0; Backends[i].name; i++) {
-                        if (prefix(Backends[i].name, name)) {
-                                ++num_found;
-                                if (1 == num_found)
-                                        first_found = i;
-                        }
-                }
-                if (0 == num_found) {
-                        fprintf(stderr, "unknown backend '%s'\n", name);
-                        list_avail = 1;
-                }
-                if (1 < num_found) {
-                        fprintf(stderr, "too many matches: ");
-                        for (i=0; Backends[i].name; i++) {
-                                if (prefix(Backends[i].name, name)) {
-                                        fprintf(stderr, "'%s' ",
-                                                Backends[i].name);
-                                }
-                        }
-                        fprintf(stderr, "\n");
-                        exit(1);
-                }
-                if (list_avail) {
-                        fprintf(stderr, "available backends: ");
-                        for (i=0; Backends[i].name; i++) {
-                                fprintf(stderr, "'%s' ", Backends[i].name);
-                        }
-                        fprintf(stderr, "\n");
-                        exit(1);
-                }
-                args.backendops = Backends[first_found].ops;
-        }
         return args;
 }
 
 int
 main(int argc, char **argv)
 {
-        struct context cx[1];
+        struct context *cx;
         struct program pgm[1];
         struct args args;
 
@@ -1124,12 +720,12 @@ main(int argc, char **argv)
         program_translate(pgm, dx, dy);
 
         /* Loop rendering! */
-        cx_init(cx, args.backendops);
+        cx = cx_create();
         cx_resize(cx, args.width, args.height);
 
         ms = get_current_ms();
         for (i=1; i<=args.niter; i++) {
-                if (args.clear) image_clear(cx->image);
+                if (args.clear) cx_clear(cx);
                 cx_reset_clip(cx, 0, 0, args.width, args.height);
                 program_interpret(pgm, cx);
         }
@@ -1144,11 +740,16 @@ main(int argc, char **argv)
         }
 
         if (!args.no_pgm) {
-                image_save_as_pgm_to_stream(cx->image, stdout);
+                unsigned char *pixels;
+                size_t stride;
+                unsigned width, height;
+                cx_get_pixels(cx, &pixels, &stride, &width, &height);
+                save_data_as_pgm_to_stream(
+                        pixels, stride, width, height, stdout);
         }
 
         program_fini(pgm);
-        cx_fini(cx);
+        cx_destroy(cx);
 
         if (fp != stdin)
                 fclose(fp);
