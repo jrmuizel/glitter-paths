@@ -1,3 +1,4 @@
+#include <string.h>
 #include <stdlib.h>
 #include <cairo.h>
 
@@ -11,8 +12,29 @@ struct context *
 cx_create()
 {
         struct context *cx = calloc(1, sizeof(struct context));
+        char const *fmt;
+        static struct {
+                char const *name;
+                cairo_format_t format;
+        } formats[] = {
+                { "ARGB32", CAIRO_FORMAT_ARGB32 },
+                { "RGB24", CAIRO_FORMAT_RGB24 },
+                { "A8", CAIRO_FORMAT_A8 },
+                { "A1", CAIRO_FORMAT_A1 },
+                { NULL, CAIRO_FORMAT_ARGB32 }
+        };
+        int i;
+
         cx->cr = cairo_create(NULL);
-        cx->format = CAIRO_FORMAT_ARGB32;
+
+        fmt = getenv("CAIRO_FORMAT");
+        fmt = fmt ? fmt : "ARGB32";
+        for (i=0; formats[i].name; i++) {
+                if (0 == strcmp(formats[i].name, fmt)) {
+                        break;
+                }
+        }
+        cx->format = formats[i].format;
         cx->data = NULL;
         return cx;
 }
@@ -112,6 +134,9 @@ cx_get_pixels(
         *OUT_height = h;
         cx->data = *OUT_pixels;
 
+        /* Blit the alpha channel of the render target to our
+         * result. (Doesn't work for RGB24 targets since they're all
+         * opaque, but meh.) */
         mask = cairo_image_surface_create_for_data(
                 *OUT_pixels, CAIRO_FORMAT_A8, w, h, stride);
         mask_cr = cairo_create(mask);
