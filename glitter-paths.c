@@ -84,6 +84,8 @@ typedef int grid_area_t;
 #  define  GRID_AREA_TO_ALPHA(c)  (((c) | -((c) >> 8)) & 255)
 #elif GRID_XY == 15
 #  define  GRID_AREA_TO_ALPHA(c)  (((c) << 4) + (c))
+#elif GRID_XY == 2*256*15
+#  define  GRID_AREA_TO_ALPHA(c)  (((c) + ((c)<<4)) >> 9)
 #else
 #  define  GRID_AREA_TO_ALPHA(c)  ((c)*255 / GRID_XY) /* tweak me for rounding */
 #endif
