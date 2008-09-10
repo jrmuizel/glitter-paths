@@ -1310,6 +1310,62 @@ apply_nonzero_fill_rule_and_step_edges(
     return GLITTER_STATUS_SUCCESS;
 }
 
+/* Compute analytical coverage of the polygon for the current pixel
+ * row and step the edges on the active list by one row.  Only called
+ * when it's safe to use analytical coverage computations (no new
+ * edges start and there are no edge intersections inside the pixel
+ * row.) */
+static glitter_status_t
+apply_evenodd_fill_rule_and_step_edges(
+    struct active_list *active,
+    struct cell_list *coverages)
+{
+    struct edge **pprev = &active->head;
+    struct edge *left_edge;
+    int status;
+
+    left_edge = *pprev;
+    while (NULL != left_edge) {
+	struct edge *right_edge;
+
+	left_edge->h -= GRID_Y;
+	if (left_edge->h) {
+	    pprev = &left_edge->next;
+	}
+	else {
+	    *pprev = left_edge->next;
+	}
+
+	right_edge = *pprev;
+
+	if (NULL == right_edge) {
+	    return cell_list_render_edge_to_cells(
+		coverages, left_edge, +1);
+	}
+
+	right_edge->h -= GRID_Y;
+	if (right_edge->h) {
+	    pprev = &right_edge->next;
+	}
+	else {
+	    *pprev = right_edge->next;
+	}
+
+	status = cell_list_render_edge_to_cells(
+	    coverages, left_edge, +1);
+	if (status)
+	    return status;
+	status = cell_list_render_edge_to_cells(
+	    coverages, right_edge, -1);
+	if (status)
+	    return status;
+
+	left_edge = *pprev;
+    }
+
+    return GLITTER_STATUS_SUCCESS;
+}
+
 /* Blit a span of pixels to an image row.  Tweak this to retarget
  * polygon rendering to something else. */
 inline static void
@@ -1518,10 +1574,16 @@ glitter_scan_converter_render(
 
 	cell_list_reset(coverages);
 
-	if (do_full_step && nonzero_fill) {
+	if (do_full_step) {
 	    /* Step by a full pixel row's worth. */
-	    status = apply_nonzero_fill_rule_and_step_edges(
-		active, coverages);
+	    if (nonzero_fill) {
+		status = apply_nonzero_fill_rule_and_step_edges(
+		    active, coverages);
+	    }
+	    else {
+		status = apply_evenodd_fill_rule_and_step_edges(
+		    active, coverages);
+	    }
 	}
 	else {
 	    /* Subsample this row. */
