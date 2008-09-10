@@ -202,6 +202,36 @@ program_emit_reset_clip(struct program *p, int xmin, int ymin, int xmax, int yma
 }
 
 static void
+program_emit_flattened_curveto(
+        struct program *p,
+        double x1, double y1,   /* current point */
+        double x2, double y2,
+        double x3, double y3,
+        double x4, double y4)
+{
+        /* do something clever later. */
+        int i;
+        double px = x1;
+        double py = y1;
+        int n = 10;
+        for (i=0; i<n; i++) {
+                double t = 1.0 * i / n;
+                double c1 = (1-t)*(1-t)*(1-t);
+                double c2 = 3*(1-t)*(1-t)*t;
+                double c3 = 3*(1-t)*t*t;
+                double c4 = t*t*t;
+                double x = x1*c1 + x2*c2 + x3*c3 + x4*c4;
+                double y = y1*c1 + y2*c2 + y3*c3 + y4*c4;
+                if (hypot(x-px, y-py) > 0.1) {
+                        program_emit_lineto(p, x, y);
+                        px = x;
+                        px = y;
+                }
+        }
+        program_emit_lineto(p, x4, y4);
+}
+
+static void
 program_emit_resize(struct program *p, int w, int h)
 {
         program_emit_op(p, CMD_RESIZE);
@@ -230,7 +260,7 @@ program_parse_stream(struct program *pgm, FILE *fp)
 } while (0)
 
         while (!feof(fp) && !ferror(fp)) {
-                double x[2], y[2];
+                double x[4], y[4];
                 int c = EOF;
                 char cmd;
                 if (1 == fscanf(fp, " %c", &cmd))
@@ -292,6 +322,24 @@ program_parse_stream(struct program *pgm, FILE *fp)
                         if (cp.valid) {
                                 cp.y += *y;
                                 program_emit_lineto(pgm, cp.x, cp.y);
+                        }
+                        break;
+                case 'C':       /* bx by cx cy dx dy */
+                        get_double_arg(x+0);
+                        get_double_arg(y+0);
+                        get_double_arg(x+1);
+                        get_double_arg(y+1);
+                        get_double_arg(x+2);
+                        get_double_arg(y+2);
+                        if (cp.valid) {
+                                program_emit_flattened_curveto(
+                                        pgm,
+                                        cp.x, cp.y,
+                                        x[0], y[0],
+                                        x[1], y[1],
+                                        x[2], y[2]);
+                                cp.x = x[2];
+                                cp.y = y[2];
                         }
                         break;
                 case 'z':
