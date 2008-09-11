@@ -40,10 +40,6 @@
  * from raster-comparison-20070813.tar.bz2
  */
 
-#ifndef I
-#  define I /*static*/
-#endif
-
 #include "glitter-paths.h"
 
 /*-------------------------------------------------------------------------
@@ -59,13 +55,48 @@ typedef int grid_scaled_t;
 typedef int grid_scaled_x_t;
 typedef int grid_scaled_y_t;
 
-/* Default x/y scale factors. */
+/* Default x/y scale factors.
+ *  You can either define GRID_X/Y_BITS to get a power-of-two scale
+ *  or define GRID_X/Y separately.
+ */
 #ifndef GRID_X
-#  define GRID_X 256
+#  define GRID_X_BITS 8
 #endif
 #ifndef GRID_Y
 #  define GRID_Y 15
 #endif
+
+/* Use GRID_X/Y_BITS to define GRID_X/Y if they're availale. */
+#ifdef GRID_X_BITS
+#  define GRID_X (1 << GRID_X_BITS)
+#endif
+#ifdef GRID_Y_BITS
+#  define GRID_Y (1 << GRID_Y_BITS)
+#endif
+
+/* The SPLIT_X macro splits a grid scaled coordinate into integer
+ * and fractional parts. The integer part should be floored. */
+#if defined(SPLIT_X)
+  /* do nothing */
+#elif defined(GRID_X_BITS)
+#  define SPLIT_X(t, i, f)  SPLIT_bits(t, i, f, GRID_X_BITS)
+#else
+#  define SPLIT_X(t, i, f) SPLIT_general(t, i, f, GRID_X)
+#endif
+
+#define SPLIT_general(t, i, f, m) do {	\
+    (i) = (t) / (m);			\
+    (f) = (t) % (m);			\
+    if ((f) < 0) {			\
+	--(i);				\
+	(f) += (m);			\
+    }					\
+} while (0)
+
+#define SPLIT_bits(t, i, f, b) do {	\
+    (f) = (t) & ((1 << (b)) - 1);	\
+    (i) = (t) >> (b);			\
+} while (0)
 
 /* A grid area is a real in [0,1] scaled by 2*GRID_X*GRID_Y. */
 typedef int grid_area_t;
@@ -206,7 +237,7 @@ struct polygon {
  *
  * The cell->areas and cell->covers are actually signed areas, with
  * the sign of the contribution of an edge depending on the which side
- * of the edge is inside the polygon (right side is inside = +1).
+ * of the edge is inside the polygon (inside is = +1).
  *
  *  +-----------+
  *  |		|
@@ -660,14 +691,9 @@ cell_list_render_subspan_start_to_cell(
     grid_scaled_x_t x)
 {
     struct cell *cell;
-    int ix = x / GRID_X;
-    int fx = x % GRID_X;
+    int ix, fx;
 
-    if (fx < 0) {
-	--ix;
-	fx += GRID_X;
-    }
-
+    SPLIT_X(x, ix, fx);
 
     cell = cell_list_find(cells, ix);
     if (cell) {
@@ -685,26 +711,11 @@ cell_list_render_subspan_to_cells(
     grid_scaled_x_t x1,
     grid_scaled_x_t x2)
 {
-#if GRID_X == 256
-    int ix1 = x1 >> 8;
-    int ix2 = x2 >> 8;
-    int fx1 = x1 & 255;
-    int fx2 = x2 & 255;
-#else
-    int ix1 = x1 / GRID_X;
-    int ix2 = x2 / GRID_X;
-    int fx1 = x1 % GRID_X;
-    int fx2 = x2 % GRID_X;
+    int ix1, fx1;
+    int ix2, fx2;
 
-    if (fx1 < 0) {
-	--ix1;
-	fx1 += GRID_X;
-    }
-    if (fx2 < 0) {
-	--ix2;
-	fx2 += GRID_X;
-    }
-#endif
+    SPLIT_X(x1, ix1, fx1);
+    SPLIT_X(x2, ix2, fx2);
 
     if (ix1 != ix2) {
 	struct cell_pair p;
@@ -753,25 +764,8 @@ cell_list_render_edge_to_cells(
     }
     edge->x = x2;
 
-#if GRID_X == 256
-    ix1 = x1.quo >> 8;
-    ix2 = x2.quo >> 8;
-    fx1 = x1.quo & 255;
-    fx2 = x2.quo & 255;
-#else
-    ix1 = x1.quo / GRID_X;
-    fx1 = x1.quo % GRID_X;
-    ix2 = x2.quo / GRID_X;
-    fx2 = x2.quo % GRID_X;
-    if (fx1 < 0) {
-	--ix1;
-	fx1 += GRID_X;
-    }
-    if (fx2 < 0) {
-	--ix2;
-	fx2 += GRID_X;
-    }
-#endif
+    SPLIT_X(x1.quo, ix1, fx1);
+    SPLIT_X(x2.quo, ix2, fx2);
 
     /* Edge is entirely within a column? */
     if (ix1 == ix2) {
