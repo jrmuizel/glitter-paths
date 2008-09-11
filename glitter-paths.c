@@ -745,9 +745,6 @@ cell_list_render_edge_to_cells(
     int ix1, ix2;
     grid_scaled_x_t fx1, fx2;
 
-    ix1 = x1.quo / GRID_X;
-    fx1 = x1.quo % GRID_X;
-
     x2.quo += edge->dxdy_full.quo;
     x2.rem += edge->dxdy_full.rem;
     if (x2.rem >= 0) {
@@ -756,9 +753,16 @@ cell_list_render_edge_to_cells(
     }
     edge->x = x2;
 
+#if GRID_X == 256
+    ix1 = x1.quo >> 8;
+    ix2 = x2.quo >> 8;
+    fx1 = x1.quo & 255;
+    fx2 = x2.quo & 255;
+#else
+    ix1 = x1.quo / GRID_X;
+    fx1 = x1.quo % GRID_X;
     ix2 = x2.quo / GRID_X;
     fx2 = x2.quo % GRID_X;
-
     if (fx1 < 0) {
 	--ix1;
 	fx1 += GRID_X;
@@ -767,6 +771,7 @@ cell_list_render_edge_to_cells(
 	--ix2;
 	fx2 += GRID_X;
     }
+#endif
 
     /* Edge is entirely within a column? */
     if (ix1 == ix2) {
