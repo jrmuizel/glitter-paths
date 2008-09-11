@@ -1050,7 +1050,7 @@ active_list_can_step_row(
 {
     /* Recomputes the minimum height of all edges on the active
      * list if we don't know the min height well. */
-    if (active->min_h <= -GRID_Y) {
+    if (active->min_h <= 0) {
 	struct edge *e = active->head;
 	int min_h = INT_MAX;
 
