@@ -502,11 +502,28 @@ cell_list_find(struct cell_list *cells, int x)
 {
     struct cell **ppred = cells->tailpred;
     struct cell *tail;
-    while ((tail = *ppred) && tail->x < x) {
-	ppred = &tail->next;
+
+    while (1) {
+	    tail = *ppred;
+	    if (NULL == tail || tail->x >= x) {
+		break;
+	    }
+	    ppred = &tail->next;
+	    tail = *ppred;
+	    if (NULL == tail || tail->x >= x) {
+		break;
+	    }
+	    ppred = &tail->next;
+	    tail = *ppred;
+	    if (NULL == tail || tail->x >= x) {
+		break;
+	    }
+	    ppred = &tail->next;
     }
     cells->tailpred = ppred;
-    if (!tail || tail->x != x) {
+    if (tail && tail->x == x) {
+	return tail;
+    } else {
 	struct cell *cell = pool_alloc(
 	    cells->cell_pool.base,
 	    sizeof(struct cell));
@@ -519,7 +536,6 @@ cell_list_find(struct cell_list *cells, int x)
 	cell->cover = 0;
 	return cell;
     }
-    return tail;
 }
 
 /* Find two cells at x1 and x2.	 This is exactly equivalent
