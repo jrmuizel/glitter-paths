@@ -92,11 +92,13 @@ glitter_scan_converter_add_edge(
  * rule is used.
  *
  * The scan converter must be reset or destroyed after this call. */
+#ifndef GLITTER_BLIT_COVERAGES_ARGS
+# define GLITTER_BLIT_COVERAGES_ARGS unsigned char *raster_pixels, long raster_stride
+#endif
 I glitter_status_t
 glitter_scan_converter_render(
     glitter_scan_converter_t *converter,
-    unsigned char *pixels,
-    long stride,
-    int nonzero_fill);
+    int nonzero_fill,
+    GLITTER_BLIT_COVERAGES_ARGS);
 
 #endif /* GLITTER_PATHS_H */

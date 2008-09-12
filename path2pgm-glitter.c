@@ -139,9 +139,9 @@ cx_fill(struct context *cx)
 
         glitter_scan_converter_render(
                 cx->converter,
+                cx->nonzero_fill,
                 cx->pixels,
-                cx->stride,
-                cx->nonzero_fill);
+                cx->stride);
 
         cx->current_point.valid = 0;
         cx->first_point.valid = 0;

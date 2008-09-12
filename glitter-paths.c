@@ -1381,6 +1381,10 @@ apply_evenodd_fill_rule_and_step_edges(
     return GLITTER_STATUS_SUCCESS;
 }
 
+/* If the user hasn't configured a coverage blitter, use a default one
+ * that renders to an A8 raster. */
+#ifndef GLITTER_BLIT_COVERAGES
+
 /* Blit a span of pixels to an image row.  Tweak this to retarget
  * polygon rendering to something else. */
 inline static void
@@ -1397,6 +1401,9 @@ blit_span(
 	memset(row_pixels + x, alpha, len);
     }
 }
+
+#define GLITTER_BLIT_COVERAGES(coverages, y, xmin, xmax) \
+	blit_cells(coverages, raster_pixels + (y)*raster_stride, xmin, xmax)
 
 static void
 blit_cells(
@@ -1436,6 +1443,7 @@ blit_cells(
 	blit_span(row_pixels, prev_x, xmax - prev_x, cover);
     }
 }
+#endif /* GLITTER_BLIT_COVERAGES */
 
 static void
 _glitter_scan_converter_init(glitter_scan_converter_t *converter)
@@ -1570,12 +1578,23 @@ glitter_scan_converter_add_edge(
 	converter->polygon, sx1, sy1, sx2, sy2, dir);
 }
 
+#ifndef GLITTER_BLIT_COVERAGES_BEGIN
+# define GLITTER_BLIT_COVERAGES_BEGIN
+#endif
+
+#ifndef GLITTER_BLIT_COVERAGES_END
+# define GLITTER_BLIT_COVERAGES_END
+#endif
+
+#ifndef GLITTER_BLIT_COVERAGES_EMPTY
+# define GLITTER_BLIT_COVERAGES_EMPTY(y, xmin, xmax)
+#endif
+
 I glitter_status_t
 glitter_scan_converter_render(
     glitter_scan_converter_t *converter,
-    unsigned char *pixels,
-    long stride,
-    int nonzero_fill)
+    int nonzero_fill,
+    GLITTER_BLIT_COVERAGES_ARGS)
 {
     int i;
     int ymax_i = converter->ymax / GRID_Y;
@@ -1591,6 +1610,10 @@ glitter_scan_converter_render(
     if (xmin_i >= xmax_i)
 	return GLITTER_STATUS_SUCCESS;
 
+    /* Let the coverage blitter initialise itself. */
+    GLITTER_BLIT_COVERAGES_BEGIN;
+
+    /* Render each pixel row. */
     for (i=0; i<h; i++) {
 	int do_full_step = 0;
 	glitter_status_t status = 0;
@@ -1600,9 +1623,10 @@ glitter_scan_converter_render(
 	if (GRID_Y == EDGE_Y_BUCKET_HEIGHT
 	    && !polygon->y_buckets[i])
 	{
-	    if (!active->head)
+	    if (!active->head) {
+		GLITTER_BLIT_COVERAGES_EMPTY(i+ymin_i, xmin_i, xmax_i);
 		continue;
-
+	    }
 	    do_full_step = active_list_can_step_row(active);
 	}
 
@@ -1642,9 +1666,7 @@ glitter_scan_converter_render(
 	if (status)
 	    return status;
 
-	blit_cells(coverages,
-		   pixels + (i+ymin_i)*stride,
-		   xmin_i, xmax_i);
+	GLITTER_BLIT_COVERAGES(coverages, i+ymin_i, xmin_i, xmax_i);
 
 	if (!active->head) {
 	    active->min_h = INT_MAX;
@@ -1653,5 +1675,9 @@ glitter_scan_converter_render(
 	    active->min_h -= GRID_Y;
 	}
     }
+
+    /* Clean up the coverage blitter. */
+    GLITTER_BLIT_COVERAGES_END;
+
     return GLITTER_STATUS_SUCCESS;
 }
