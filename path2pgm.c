@@ -782,7 +782,8 @@ main(int argc, char **argv)
         ms = get_current_ms() - ms;
         if (args.timer) {
                 fprintf(stderr,
-                        "%d iterations took %f ms at %f ms / iter and %f iter / sec\n",
+                        "%s %d iterations took %f ms at %f ms / iter and %f iter / sec\n",
+                        args.filename,
                         args.niter, ms, ms / (args.niter*1.0),
                         args.niter / ms * 1000.0);
         }
