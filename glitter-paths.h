@@ -31,7 +31,9 @@
 /* "Input scaled" numbers are fixed precision reals with multiplier
  * 2**GLITTER_INPUT_BITS.  Input coordinates are given to glitter as
  * pixel scaled numbers.  These get converted to the internal grid
- * scaled numbers as soon as possible. */
+ * scaled numbers as soon as possible. Internal overflow is possible
+ * if GRID_X/Y inside glitter-paths.c is larger than
+ * 1<<GLITTER_INPUT_BITS. */
 #ifndef GLITTER_INPUT_BITS
 #  define GLITTER_INPUT_BITS 8
 #endif

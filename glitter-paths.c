@@ -1526,6 +1526,27 @@ glitter_scan_converter_reset(
     return GLITTER_STATUS_SUCCESS;
 }
 
+/* Gah.. this bit of ugly defines INPUT_TO_GRID_X/Y so as to use
+ * shifts if possible, and something saneish if not.
+ */
+#if !defined(INPUT_TO_GRID_Y) && defined(GRID_Y_BITS) && GRID_Y_BITS <= GLITTER_INPUT_BITS
+#  define INPUT_TO_GRID_Y(in, out) (out) = (in) >> (GLITTER_INPUT_BITS - GRID_Y_BITS)
+#else
+#  define INPUT_TO_GRID_Y(in, out) INPUT_TO_GRID_general(in, out, GRID_Y)
+#endif
+
+#if !defined(INPUT_TO_GRID_X) && defined(GRID_X_BITS) && GRID_X_BITS <= GLITTER_INPUT_BITS
+#  define INPUT_TO_GRID_X(in, out) (out) = (in) >> (GLITTER_INPUT_BITS - GRID_X_BITS)
+#else
+#  define INPUT_TO_GRID_X(in, out) INPUT_TO_GRID_general(in, out, GRID_X)
+#endif
+
+#define INPUT_TO_GRID_general(in, out, grid_scale) do {		\
+	long long tmp__ = (long long)(grid_scale) * (in);	\
+	tmp__ >>= GLITTER_INPUT_BITS;				\
+	(out) = tmp__;						\
+} while (0)
+
 I glitter_status_t
 glitter_scan_converter_add_edge(
     glitter_scan_converter_t *converter,
@@ -1533,22 +1554,20 @@ glitter_scan_converter_add_edge(
     glitter_input_scaled_t x2, glitter_input_scaled_t y2,
     int dir)
 {
-    /* XXX: check for overflow! */
-    grid_scaled_y_t sy1 = (GRID_Y*y1) >> GLITTER_INPUT_BITS;
-    grid_scaled_y_t sy2 = (GRID_Y*y2) >> GLITTER_INPUT_BITS;
+    /* XXX: possible overflows if GRID_X/Y > 2**GLITTER_INPUT_BITS */
+    grid_scaled_y_t sx1, sy1;
+    grid_scaled_y_t sx2, sy2;
+
+    INPUT_TO_GRID_Y(y1, sy1);
+    INPUT_TO_GRID_Y(y2, sy2);
     if (sy1 == sy2)
 	return GLITTER_STATUS_SUCCESS;
-    else {
-#if GRID_X != GLITTER_INPUT_BITS
-	grid_scaled_x_t sx1 = (GRID_X*x1) >> GLITTER_INPUT_BITS;
-	grid_scaled_x_t sx2 = (GRID_X*x2) >> GLITTER_INPUT_BITS;
-#else
-	grid_scaled_x_t sx1 = x1;
-	grid_scaled_x_t sx2 = x2;
-#endif
-	return polygon_add_edge(
-	    converter->polygon, sx1, sy1, sx2, sy2, dir);
-    }
+
+    INPUT_TO_GRID_X(x1, sx1);
+    INPUT_TO_GRID_X(x2, sx2);
+
+    return polygon_add_edge(
+	converter->polygon, sx1, sy1, sx2, sy2, dir);
 }
 
 I glitter_status_t
