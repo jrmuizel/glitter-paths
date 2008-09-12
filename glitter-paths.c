@@ -59,10 +59,10 @@ typedef int grid_scaled_y_t;
  *  You can either define GRID_X/Y_BITS to get a power-of-two scale
  *  or define GRID_X/Y separately.
  */
-#ifndef GRID_X
+#if !defined(GRID_X) && !defined(GRID_X_BITS)
 #  define GRID_X_BITS 8
 #endif
-#ifndef GRID_Y
+#if !defined(GRID_Y) && !defined(GRID_Y_BITS)
 #  define GRID_Y 15
 #endif
 
