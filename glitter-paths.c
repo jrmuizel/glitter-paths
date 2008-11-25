@@ -49,16 +49,16 @@
 #include <string.h>
 #include <limits.h>
 
-/* "Grid scaled" numbers are fixed precision reals with multiplier
- * GRID_X or GRID_Y. */
+/* All polygon coordinates are snapped onto a subsample grid. "Grid
+ * scaled" numbers are fixed precision reals with multiplier GRID_X or
+ * GRID_Y. */
 typedef int grid_scaled_t;
 typedef int grid_scaled_x_t;
 typedef int grid_scaled_y_t;
 
 /* Default x/y scale factors.
  *  You can either define GRID_X/Y_BITS to get a power-of-two scale
- *  or define GRID_X/Y separately.
- */
+ *  or define GRID_X/Y separately. */
 #if !defined(GRID_X) && !defined(GRID_X_BITS)
 #  define GRID_X_BITS 8
 #endif
@@ -98,7 +98,11 @@ typedef int grid_scaled_y_t;
     (i) = (t) >> (b);			\
 } while (0)
 
-/* A grid area is a real in [0,1] scaled by 2*GRID_X*GRID_Y. */
+/* A grid area is a real in [0,1] scaled by 2*GRID_X*GRID_Y.  We want
+ * to be able to represent exactly areas of subpixel trapezoids whose
+ * vertices are given in grid scaled coordinates.  The scale factor
+ * comes from needing to accurately represent the area 0.5*dx*dy of a
+ * triangle with base dx and height dy in grid scaled numbers. */
 typedef int grid_area_t;
 #define GRID_XY (2*GRID_X*GRID_Y) /* Unit area on the grid. */
 
