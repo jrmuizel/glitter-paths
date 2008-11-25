@@ -74,28 +74,30 @@ typedef int grid_scaled_y_t;
 #  define GRID_Y (1 << GRID_Y_BITS)
 #endif
 
-/* The SPLIT_X macro splits a grid scaled coordinate into integer
- * and fractional parts. The integer part should be floored. */
-#if defined(SPLIT_X)
+/* The GRID_X_TO_INT_FRAC macro splits a grid scaled coordinate into
+ * integer and fractional parts. The integer part is floored. */
+#if defined(GRID_X_TO_INT_FRAC)
   /* do nothing */
 #elif defined(GRID_X_BITS)
-#  define SPLIT_X(t, i, f)  SPLIT_bits(t, i, f, GRID_X_BITS)
+#  define GRID_X_TO_INT_FRAC(x, i, f) \
+	_GRID_TO_INT_FRAC_shift(x, i, f, GRID_X_BITS)
 #else
-#  define SPLIT_X(t, i, f) SPLIT_general(t, i, f, GRID_X)
+#  define GRID_X_TO_INT_FRAC(x, i, f) \
+	_GRID_TO_INT_FRAC_general(x, i, f, GRID_X)
 #endif
 
-#define SPLIT_general(t, i, f, m) do {	\
-    (i) = (t) / (m);			\
-    (f) = (t) % (m);			\
-    if ((f) < 0) {			\
-	--(i);				\
-	(f) += (m);			\
-    }					\
+#define _GRID_TO_INT_FRAC_general(t, i, f, m) do {	\
+    (i) = (t) / (m);					\
+    (f) = (t) % (m);					\
+    if ((f) < 0) {					\
+	--(i);						\
+	(f) += (m);					\
+    }							\
 } while (0)
 
-#define SPLIT_bits(t, i, f, b) do {	\
-    (f) = (t) & ((1 << (b)) - 1);	\
-    (i) = (t) >> (b);			\
+#define _GRID_TO_INT_FRAC_shift(t, i, f, b) do {	\
+    (f) = (t) & ((1 << (b)) - 1);			\
+    (i) = (t) >> (b);					\
 } while (0)
 
 /* A grid area is a real in [0,1] scaled by 2*GRID_X*GRID_Y.  We want
@@ -697,7 +699,7 @@ cell_list_render_subspan_start_to_cell(
     struct cell *cell;
     int ix, fx;
 
-    SPLIT_X(x, ix, fx);
+    GRID_X_TO_INT_FRAC(x, ix, fx);
 
     cell = cell_list_find(cells, ix);
     if (cell) {
@@ -718,8 +720,8 @@ cell_list_render_subspan_to_cells(
     int ix1, fx1;
     int ix2, fx2;
 
-    SPLIT_X(x1, ix1, fx1);
-    SPLIT_X(x2, ix2, fx2);
+    GRID_X_TO_INT_FRAC(x1, ix1, fx1);
+    GRID_X_TO_INT_FRAC(x2, ix2, fx2);
 
     if (ix1 != ix2) {
 	struct cell_pair p;
@@ -768,8 +770,8 @@ cell_list_render_edge_to_cells(
     }
     edge->x = x2;
 
-    SPLIT_X(x1.quo, ix1, fx1);
-    SPLIT_X(x2.quo, ix2, fx2);
+    GRID_X_TO_INT_FRAC(x1.quo, ix1, fx1);
+    GRID_X_TO_INT_FRAC(x2.quo, ix2, fx2);
 
     /* Edge is entirely within a column? */
     if (ix1 == ix2) {
