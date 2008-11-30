@@ -76,7 +76,8 @@ glitter_scan_converter_reset(
 /* Add a new polygon edge from pixel (x1,y1) to (x2,y2) to the scan
  * converter.  The coordinates represent pixel positions scaled by
  * 2**GLITTER_PIXEL_BITS.  If this function fails then the scan
- * converter should be reset or destroyed. */
+ * converter should be reset or destroyed.  Dir must be +1 or -1,
+ * with the latter reversing the orientation of the edge. */
 I glitter_status_t
 glitter_scan_converter_add_edge(
     glitter_scan_converter_t *converter,
