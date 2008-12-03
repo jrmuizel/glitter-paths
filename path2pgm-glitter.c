@@ -134,9 +134,6 @@ cx_fill(struct context *cx)
 {
         cx_closepath(cx);
 
-        assert(cx->pixels);
-        assert(cx->stride);
-
         glitter_scan_converter_render(
                 cx->converter,
                 cx->nonzero_fill,
