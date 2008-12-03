@@ -245,7 +245,7 @@ program_parse_stream(struct program *pgm, FILE *fp)
         struct {
                 double x, y;
                 int valid;
-        } cp;
+        } cp, first;
         cp.x = 0;
         cp.y = 0;
         cp.valid = 0;
@@ -269,7 +269,13 @@ program_parse_stream(struct program *pgm, FILE *fp)
                 case 'M':       /* move */
                         get_double_arg(x);
                         get_double_arg(y);
+			if (cp.valid) {
+			    if (*x != cp.x || *y != cp.y)
+				if (first.x != cp.x || first.y != cp.y)
+				    program_emit_closepath(pgm);
+			}
                         cp.x = *x; cp.y = *y;
+			first = cp;
                         cp.valid = 1;
                         program_emit_moveto(pgm, cp.x, cp.y);
                         break;
