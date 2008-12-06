@@ -114,7 +114,7 @@ typedef int grid_scaled_y_t;
 #  define GRID_Y 15
 #endif
 
-/* Use GRID_X/Y_BITS to define GRID_X/Y if they're availale. */
+/* Use GRID_X/Y_BITS to define GRID_X/Y if they're available. */
 #ifdef GRID_X_BITS
 #  define GRID_X (1 << GRID_X_BITS)
 #endif
@@ -190,7 +190,7 @@ struct _pool_chunk {
     /* # bytes total in this chunk */
     size_t capacity;
 
-    /* Pointer to the previous chunk or NULL if this is the sentinel
+    /* Pointer to the previous chunk or %NULL if this is the sentinel
      * chunk in the pool header. */
     struct _pool_chunk *prev_chunk;
 
@@ -503,7 +503,7 @@ _pool_alloc_from_new_chunk(
 /* Allocate size bytes from the pool.  The first allocated address
  * returned from a pool is aligned to sizeof(void*).  Subsequent
  * addresses will maintain alignment as long as multiples of void* are
- * allocated.  Returns the address of a new memory area or NULL on
+ * allocated.  Returns the address of a new memory area or %NULL on
  * allocation failures.	 The pool retains ownership of the returned
  * memory. */
 inline static void *
@@ -586,7 +586,7 @@ cell_list_reset(struct cell_list *cells)
     pool_reset(cells->cell_pool.base);
 }
 
-/* Find a cell at the given x-coordinate.  Returns NULL if a new cell
+/* Find a cell at the given x-coordinate.  Returns %NULL if a new cell
  * needed to be allocated but couldn't be.  Cells must be found with
  * non-decreasing x-coordinate until the cell list is rewound using
  * cell_list_rewind(). Ownership of the returned cell is retained by

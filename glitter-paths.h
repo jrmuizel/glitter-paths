@@ -40,7 +40,7 @@
 #define GLITTER_INPUT_SCALE (1<<GLITTER_INPUT_BITS)
 typedef int glitter_input_scaled_t;
 
-#ifndef GLITTER_HAVE_STATUS_T
+#if !GLITTER_HAVE_STATUS_T
 typedef enum {
     GLITTER_STATUS_SUCCESS = 0,
     GLITTER_STATUS_NO_MEMORY
