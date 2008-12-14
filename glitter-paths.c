@@ -336,6 +336,9 @@ struct cell_list {
     /* Points to the left-most cell in the scan line. */
     struct cell *head;
 
+    /* Sentinel node at x=INT_MAX. */
+    struct cell tail;
+
     /* Cursor state for iterating through the cell list.  Points to
      * a pointer to the current cell: either &cell_list->head or the next
      * field of the previous cell. */
@@ -558,7 +561,7 @@ inline static void
 cell_list_maybe_rewind(struct cell_list *cells, int x)
 {
     struct cell *tail = *cells->cursor;
-    if (tail && tail->x > x) {
+    if (tail->x > x) {
 	cell_list_rewind(cells);
     }
 }
@@ -569,7 +572,11 @@ cell_list_init(struct cell_list *cells)
     pool_init(cells->cell_pool.base,
 	      256*sizeof(struct cell),
 	      sizeof(cells->cell_pool.embedded));
-    cells->head = NULL;
+    cells->tail.next = NULL;
+    cells->tail.x = INT_MAX;
+    cells->tail.uncovered_area = 0;
+    cells->tail.covered_height = 0;
+    cells->head = &cells->tail;
     cell_list_rewind(cells);
 }
 
@@ -586,7 +593,9 @@ inline static void
 cell_list_reset(struct cell_list *cells)
 {
     cell_list_rewind(cells);
-    cells->head = NULL;
+    cells->head = &cells->tail;
+    cells->tail.uncovered_area = 0;
+    cells->tail.covered_height = 0;
     pool_reset(cells->cell_pool.base);
 }
 
@@ -604,14 +613,15 @@ cell_list_find(struct cell_list *cells, int x)
     while (1) {
 	UNROLL3({
 	    tail = *cursor;
-	    if (NULL == tail || tail->x >= x) {
+	    if (tail->x >= x) {
 		break;
 	    }
 	    cursor = &tail->next;
 	});
     }
     cells->cursor = cursor;
-    if (tail && tail->x == x) {
+
+    if (tail->x == x) {
 	return tail;
     } else {
 	struct cell *cell = pool_alloc(
@@ -648,7 +658,7 @@ cell_list_find2(struct cell_list *cells, int x1, int x2)
     while (1) {
 	UNROLL3({
 	    cell1 = *cursor;
-	    if (NULL == cell1 || cell1->x > x1)
+	    if (cell1->x > x1)
 		break;
 	    if (cell1->x == x1)
 		goto found_first;
@@ -674,7 +684,7 @@ cell_list_find2(struct cell_list *cells, int x1, int x2)
     while (1) {
 	UNROLL3({
 	    cell2 = *cursor;
-	    if (NULL == cell2 || cell2->x > x2)
+	    if (cell2->x > x2)
 		break;
 	    if (cell2->x == x2)
 		goto found_second;
