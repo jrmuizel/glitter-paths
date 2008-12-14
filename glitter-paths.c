@@ -259,6 +259,8 @@ struct edge {
 
 #define EDGE_Y_BUCKET_INDEX(y, ymin) (((y) - (ymin))/EDGE_Y_BUCKET_HEIGHT)
 
+#define NUM_EMBEDDED_BUCKETS 64
+
 /* A collection of sorted and vertically clipped edges of the polygon.
  * Edges are moved from the polygon to an active list while scan
  * converting. */
@@ -270,6 +272,8 @@ struct polygon {
      * into bucket EDGE_BUCKET_INDEX(edge->ytop, polygon->ymin) when
      * it is added to the polygon. */
     struct edge **y_buckets;
+    struct edge *y_buckets_embedded[NUM_EMBEDDED_BUCKETS];
+    unsigned max_buckets;
 
     struct {
 	struct pool base[1];
@@ -894,7 +898,8 @@ static void
 polygon_init(struct polygon *polygon)
 {
     polygon->ymin = polygon->ymax = 0;
-    polygon->y_buckets = NULL;
+    polygon->y_buckets = polygon->y_buckets_embedded;
+    polygon->max_buckets = NUM_EMBEDDED_BUCKETS;
     pool_init(polygon->edge_pool.base,
 	      8192 - sizeof(struct _pool_chunk),
 	      sizeof(polygon->edge_pool.embedded));
@@ -903,21 +908,10 @@ polygon_init(struct polygon *polygon)
 static void
 polygon_fini(struct polygon *polygon)
 {
-    free(polygon->y_buckets);
+    if (polygon->y_buckets != polygon->y_buckets_embedded)
+	free(polygon->y_buckets);
     pool_fini(polygon->edge_pool.base);
     polygon_init(polygon);
-}
-
-static void *
-realloc_and_clear(void *p, size_t a, size_t b)
-{
-    size_t total = a*b;
-    if (b && total / b != a)
-	return NULL;
-    p = realloc(p, total);
-    if (p)
-	memset(p, 0, total);
-    return p;
 }
 
 /* Empties the polygon of all edges. The polygon is then prepared to
@@ -929,37 +923,38 @@ polygon_reset(
     grid_scaled_y_t ymin,
     grid_scaled_y_t ymax)
 {
-    void *p;
     unsigned h = ymax - ymin;
     unsigned num_buckets = EDGE_Y_BUCKET_INDEX(ymax + EDGE_Y_BUCKET_HEIGHT-1,
 					       ymin);
-
     pool_reset(polygon->edge_pool.base);
 
-    if (h > 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT)
-	goto bail_no_mem; /* even if you could, you wouldn't want to. */
+    if (h > 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT ||
+	num_buckets > 0x7FFFFFFFU / sizeof(struct edge*))
+    {
+	goto bail_no_mem;
+    }
 
-    if (num_buckets > 0) {
-	p = realloc_and_clear(
-	    polygon->y_buckets,
-	    num_buckets,
-	    sizeof(struct edge*));
+    if (num_buckets > polygon->max_buckets) {
+	void *p;
+	if (polygon->y_buckets != polygon->y_buckets_embedded) {
+	    free (polygon->y_buckets);
+	    polygon->y_buckets = polygon->y_buckets_embedded;
+	    polygon->max_buckets = NUM_EMBEDDED_BUCKETS;
+	}
+
+	p = malloc(num_buckets * sizeof(struct edge *));
 	if (NULL == p)
 	    goto bail_no_mem;
+	polygon->y_buckets = p;
+	polygon->max_buckets = num_buckets;
     }
-    else {
-	free(polygon->y_buckets);
-	p = NULL;
-    }
-    polygon->y_buckets = p;
 
+    memset(polygon->y_buckets, 0, num_buckets * sizeof(struct edge*));
     polygon->ymin = ymin;
     polygon->ymax = ymax;
     return GLITTER_STATUS_SUCCESS;
 
  bail_no_mem:
-    free(polygon->y_buckets);
-    polygon->y_buckets = NULL;
     polygon->ymin = 0;
     polygon->ymax = 0;
     return GLITTER_STATUS_NO_MEMORY;
