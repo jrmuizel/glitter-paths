@@ -646,7 +646,7 @@ cell_list_find(struct cell_list *cells, int x)
  *
  * except with less function call overhead. */
 inline static struct cell_pair
-cell_list_find2(struct cell_list *cells, int x1, int x2)
+cell_list_find_pair(struct cell_list *cells, int x1, int x2)
 {
     struct cell_pair pair;
     struct cell **cursor = cells->cursor;
@@ -748,7 +748,7 @@ cell_list_add_subspan(
 
     if (ix1 != ix2) {
 	struct cell_pair p;
-	p = cell_list_find2(cells, ix1, ix2);
+	p = cell_list_find_pair(cells, ix1, ix2);
 	if (p.cell1 && p.cell2) {
 	    p.cell1->uncovered_area += 2*fx1;
 	    ++p.cell1->covered_height;
@@ -862,7 +862,7 @@ cell_list_render_edge(
 	 * this function that the active list order won't change. */
 	cell_list_maybe_rewind(cells, ix1);
 
-	pair = cell_list_find2(cells, ix1, ix1+1);
+	pair = cell_list_find_pair(cells, ix1, ix1+1);
 	if (!pair.cell1 || !pair.cell2)
 	    return GLITTER_STATUS_NO_MEMORY;
 
